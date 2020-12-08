@@ -6,6 +6,7 @@
 #include <omp.h>
 #endif
 
+#ifndef __APPLE__
 extern void runnable (cpu_set_t *, int *, int *);
 
 void print_affinity_ (int *rank)
@@ -33,3 +34,10 @@ void print_affinity_ (int *rank)
     }
   }
 }
+
+#else
+void print_affinity_ (int *dummy)
+{
+ printf("print_affinity is not supported on Mac OS\n");
+}
+#endif

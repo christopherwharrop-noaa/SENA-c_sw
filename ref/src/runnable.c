@@ -5,7 +5,7 @@
 #include <sched.h>
 
 // Punt on MAC: cannot map threads to cores
-#ifdef MAC
+#ifdef __APPLE__
 void runnable (void *mask, int *lo_out, int *hi_out)
 {
 }

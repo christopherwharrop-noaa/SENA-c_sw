@@ -53,25 +53,25 @@ set(COMPARE_SH ${CMAKE_BINARY_DIR}/bin/c_sw_compare.sh)
 
 # 12 x 24 workload
 add_test(NAME regression_12x24
-         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_12x24.nl |& tee test_output/c_sw_12x24.log.out")
+         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_12x24.nl 2>&1 | tee test_output/c_sw_12x24.log.out")
 add_test(NAME compare_12x24
          COMMAND ${COMPARE_SH} test_output/c_sw_12x24.log.out test_output/c_sw_12x24.test)
 
 # 24 x 24 workload
 add_test(NAME regression_24x24
-         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_24x24.nl |& tee test_output/c_sw_24x24.log.out")
+         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_24x24.nl 2>&1 | tee test_output/c_sw_24x24.log.out")
 add_test(NAME compare_24x24
          COMMAND ${COMPARE_SH} test_output/c_sw_24x24.log.out test_output/c_sw_24x24.test)
 
 # 48 x 24 workload
 add_test(NAME regression_48x24
-         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_48x24.nl |& tee test_output/c_sw_48x24.log.out")
+         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_48x24.nl 2>&1 | tee test_output/c_sw_48x24.log.out")
 add_test(NAME compare_48x24
          COMMAND ${COMPARE_SH} test_output/c_sw_48x24.log.out test_output/c_sw_48x24.test)
 
 # 48 x 48 workload
 add_test(NAME regression_48x48
-         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_48x48.nl |& tee test_output/c_sw_48x48.log.out")
+         COMMAND bash -c "set -o pipefail; ../src/c_sw test_input/c_sw_48x48.nl 2>&1 | tee test_output/c_sw_48x48.log.out")
 add_test(NAME compare_48x48
          COMMAND ${COMPARE_SH} test_output/c_sw_48x48.log.out test_output/c_sw_48x48.test)
 
