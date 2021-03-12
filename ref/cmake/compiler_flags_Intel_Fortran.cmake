@@ -20,4 +20,4 @@ set( CMAKE_Fortran_FLAGS_DEBUG   "-g -O0 -debug -nolib-inline -fno-inline-functi
 # FLAGS FOR AUTOPROFILING
 ####################################################################
 
-set( Fortran_AUTOPROFILING_FLAGS        "-finstrument-functions" )
+set( Fortran_AUTOPROFILING_FLAGS        "-finstrument-functions -rdynamic" )

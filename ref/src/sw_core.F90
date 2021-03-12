@@ -1137,13 +1137,13 @@ contains
   !------------------------------------------------------------------
   ! print_state
   !
-  ! prints statistics for the kernel state variables
+  ! Prints statistics for the kernel state variables
   !------------------------------------------------------------------
   subroutine print_state(msg)
 
     character(len=*) :: msg
 
-    write(*,*)
+    write(*,'(A4)') "TEST"
     write(*,'(A5,A115)') "TEST ", repeat("=",115)
     write(*,'(A5,A20)') "TEST ", msg
     write(*,'(A5,A115)') "TEST ", repeat("=",115)
@@ -1189,15 +1189,76 @@ contains
     call print_3d_variable("divg_d", divg_d)
 
     write(*,'(A5,A115)') "TEST ", repeat("-",115)
-    write(*,*)
+    write(*,'(A4)') "TEST"
 
   end subroutine print_state
 
 
   !------------------------------------------------------------------
+  ! write_state_stats
+  !
+  ! Writes statistics for the kernel state variables to the given file unit
+  !------------------------------------------------------------------
+  subroutine write_state_stats(msg, test_file_unit)
+
+    character(len= *),intent(IN) :: msg
+    integer          ,intent(IN) :: test_file_unit
+
+    write(test_file_unit,'(A4)') "TEST"
+    write(test_file_unit,'(A5,A115)') "TEST ", repeat("=",115)
+    write(test_file_unit,'(A5,A20)') "TEST ", msg
+    write(test_file_unit,'(A5,A115)') "TEST ", repeat("=",115)
+    write(test_file_unit,'(A5,A15,5A20)') "TEST ", "Variable", "Min", "Max", "First", "Last", "RMS"
+    write(test_file_unit,'(A5,A115)') "TEST ", repeat("-",115)
+
+    call write_2d_variable(test_file_unit,"rarea", rarea)
+    call write_2d_variable(test_file_unit,"rarea_c", rarea_c)
+    call write_3d_variable(test_file_unit,"sin_sg", sin_sg)
+    call write_3d_variable(test_file_unit,"cos_sg", cos_sg)
+    call write_2d_variable(test_file_unit,"sina_v", sina_v)
+    call write_2d_variable(test_file_unit,"cosa_v", cosa_v)
+    call write_2d_variable(test_file_unit,"sina_u", sina_u)
+    call write_2d_variable(test_file_unit,"cosa_u", cosa_u)
+    call write_2d_variable(test_file_unit,"fC", fC)
+    call write_2d_variable(test_file_unit,"rdxc", rdxc)
+    call write_2d_variable(test_file_unit,"rdyc", rdyc)
+    call write_2d_variable(test_file_unit,"dx", dx)
+    call write_2d_variable(test_file_unit,"dy", dy)
+    call write_2d_variable(test_file_unit,"dxc", dxc)
+    call write_2d_variable(test_file_unit,"dyc", dyc)
+    call write_2d_variable(test_file_unit,"cosa_s", cosa_s)
+    call write_2d_variable(test_file_unit,"rsin_u", rsin_u)
+    call write_2d_variable(test_file_unit,"rsin_v", rsin_v)
+    call write_2d_variable(test_file_unit,"rsin2", rsin2)
+    call write_2d_variable(test_file_unit,"dxa", dxa)
+    call write_2d_variable(test_file_unit,"dya", dya)
+
+    call write_3d_variable(test_file_unit,"delp", delp)
+    call write_3d_variable(test_file_unit,"delpc", delpc)
+    call write_3d_variable(test_file_unit,"pt", pt)
+    call write_3d_variable(test_file_unit,"ptc", ptc)
+    call write_3d_variable(test_file_unit,"u", u)
+    call write_3d_variable(test_file_unit,"v", v)
+    call write_3d_variable(test_file_unit,"w", w)
+    call write_3d_variable(test_file_unit,"uc", uc)
+    call write_3d_variable(test_file_unit,"vc", vc)
+    call write_3d_variable(test_file_unit,"ua", ua)
+    call write_3d_variable(test_file_unit,"va", va)
+    call write_3d_variable(test_file_unit,"wc", wc)
+    call write_3d_variable(test_file_unit,"ut", ut)
+    call write_3d_variable(test_file_unit,"vt", vt)
+    call write_3d_variable(test_file_unit,"divg_d", divg_d)
+
+    write(test_file_unit,'(A5,A115)') "TEST ", repeat("-",115)
+    write(test_file_unit,'(A4)') "TEST"
+
+  end subroutine write_state_stats
+
+
+  !------------------------------------------------------------------
   ! print_3d_variable
   !
-  ! prints statistics for a 3d state variable
+  ! Prints statistics for a 3d state variable
   !------------------------------------------------------------------
   subroutine print_3d_variable(name, data)
 
@@ -1212,11 +1273,29 @@ contains
 
   end subroutine print_3d_variable
 
+  !------------------------------------------------------------------
+  ! write_3d_variable
+  !
+  ! Writes statistics for a 3d state variable to the given file unit
+  !------------------------------------------------------------------
+  subroutine write_3d_variable(unit, name, data)
+
+    integer         ,intent(IN) :: unit
+    character(len=*),intent(IN) :: name
+    real            ,intent(IN) :: data(:,:,:)
+
+    ! Note: Assumed shape array sections always start with index=1 for all dimensions
+    !       So we don't have to know start/end indices here
+    write(unit,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1,1),  &
+                                             data(size(data,1), size(data,2), size(data,3)), &
+                                             sqrt(sum(data**2) / size(data))
+
+  end subroutine write_3d_variable
 
   !------------------------------------------------------------------
   ! print_2d_variable
   !
-  ! prints statistics for a 2d state variable
+  ! Prints statistics for a 2d state variable
   !------------------------------------------------------------------
   subroutine print_2d_variable(name, data)
 
@@ -1231,6 +1310,25 @@ contains
 
   end subroutine print_2d_variable
 
+
+  !------------------------------------------------------------------
+  ! write_2d_variable
+  !
+  ! Writes statistics for a 2d state variable to the given file unit
+  !------------------------------------------------------------------
+  subroutine write_2d_variable(unit, name, data)
+
+    integer         ,intent(IN) :: unit
+    character(len=*),intent(IN) :: name
+    real            ,intent(IN) :: data(:,:)
+
+    ! Note: Assumed shape array sections always start with index=1 for all dimensions
+    !       So we don't have to know start/end indices here
+    write(unit,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1), &
+                                             data(size(data,1), size(data,2)),            &
+                                             sqrt(sum(data**2) / size(data))
+
+  end subroutine write_2d_variable
 
   !------------------------------------------------------------------
   ! read_state

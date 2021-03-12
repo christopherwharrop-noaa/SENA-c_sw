@@ -19,4 +19,4 @@ set( CMAKE_Fortran_FLAGS_DEBUG "${CMAKE_Fortran_FLAGS_DEBUG} -O0 -g -fcheck=boun
 # FLAGS FOR AUTOPROFILING
 ####################################################################
 
-set( Fortran_AUTOPROFILING_FLAGS        "-finstrument-functions" )
+set( Fortran_AUTOPROFILING_FLAGS        "-finstrument-functions -rdynamic" )

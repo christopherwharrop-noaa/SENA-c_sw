@@ -26,6 +26,7 @@ The following packages are required for building and running this kernel:
 The following packages are optional for building and running this kernel:
 
 * [GPTL](https://github.com/jmrosinski/GPTL) (General Purpose Timing Library)
+* MPI
 
 ## Prerequisites
 This code requires git-lfs. Before cloning the repository, verify that git-lfs is installed, by issuing the following command. This only needs to be done once per user per machine.
@@ -111,6 +112,33 @@ $ cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_GPTL=1 ..
 
 GPTL timing information is written to `timing.*` files in the directory where the code executes.
 
+### Building with MPI support
+
+This kernel can be built with MPI to simulate a parallel execution.  The `c_sw` kernel was extracted
+from a much larger MPI code where halo exchanges took place at a higher level. Therefore, this kernel
+is not a true parallel program. However, when built with MPI support this kernel simulates a parallel 
+MPI execution by running N copies of the serial version and performing a single, simulated, halo
+exchange (not implemented yet). To enable simulated parallel MPI execution, add `-DENABLE_MPI=1` to
+the `cmake` command. For example:
+
+```bash
+$ cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 ..
+```
+
+On execution, the input and output statistics for each rank are written to files named according to
+their MPI rank. For example:
+
+```
+c_sw_12x24.log.0000
+c_sw_12x24.log.0001
+c_sw_12x24.log.0002
+c_sw_12x24.log.0003
+```
+
+Each of the log files should be identical because each rank is running the same code with the same input.
+The tests in the test suite verify correctness by comparing each of the outputs to the original serial
+baseline output.
+
 ### Machines that use modules to manage software
 
 Most HPC systems use modules to manage software.  Make sure you have loaded the versions of
@@ -169,20 +197,36 @@ To run a specific test with full output to get more information about a failure 
 $ ctest -VV -R regression_12x24
 ```
 
+NOTE: The MPI tests are only run by `ctest` when the kernel is built with MPI support.
+
 ## Build and test script
 
-For convenience, a build script is provided that builds the code and runs the test suite. An
-optional third argument (as shown below) specifies the type of GPTL support desired.  GPTL
-support is off by default.
+For convenience, a build script is provided that builds the code and runs the test suite. Two
+optional arguments (as shown below) specify whether to turn on support for GPTL and/or MPI.
+Both of those optional features are off by default.
 
 **(NOTE: This script is written for machines that use modules and it may need to be modified,
 depending on how modules are set up on your system)**
 
 ```bash
-$ ./build.sh <gcc | intel> <debug | release> [off | manual | auto]
+Usage: build.sh compiler build_type [options]
+
+  compiler:   must be intel or gcc
+  build_type: must be debug or release
+
+  options
+
+    gptl mode: mode must be off (the default), manual, or auto
+     mpi mode: mode must be off (the default) or on
+
+  examples
+
+    build.sh intel debug
+    build.sh intel debug gptl manual
+    build.sh intel debug mpi on
+    build.sh intel debug gptl auto mpi on
+    build.sh gnu release mpi on gptl auto
 ```
-
-
 
 ## Installation and running
 
@@ -200,12 +244,20 @@ $ export OMP_PROC_BIND=close
 $ export OMP_NUM_THREADS=4
 $ exe/c_sw ../test/test_input/c_sw_12x24.nl
 ```
+To run the installed executable built with MPI, the appropriate MPI launch
+command must be used.  The correct MPI launch command is dependent on the MPI
+implementation used to build the kernel.  For example:
+
+```bash
+$ mpirun -np 4 exe/c_sw ../test/test_input/c_sw_12x24.nl
+```
 
 ## NOTES:
 
 1. The test suite does not measure performance, but reports how long each test takes to run.
-2. Detailed performance timings are printed in the stdout when the kernel runs.
-3. To view kernel output, either run ctest in verbose mode, or run the kernel manually.
+2. The MPI tests in the test suite are only run when the kernel is built with MPI support.
+3. Detailed performance timings are printed in the stdout when the kernel runs.
+4. To view kernel output, either run ctest in verbose mode, or run the kernel manually.
 
 ## Here is a list of the files and what they contain.
 

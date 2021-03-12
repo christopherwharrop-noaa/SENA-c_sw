@@ -20,5 +20,10 @@ if ( GPTL_FOUND )
    target_link_libraries( ${PROJECT_NAME} PUBLIC GPTL::GPTL )
 endif()
 
+if ( MPI_FOUND )
+  target_link_libraries( ${PROJECT_NAME} PUBLIC MPI::MPI_Fortran )
+  target_link_libraries( ${PROJECT_NAME} PUBLIC MPI::MPI_C )
+endif()
+
 install(TARGETS c_sw
         DESTINATION ${PROJECT_SOURCE_DIR}/exe)
