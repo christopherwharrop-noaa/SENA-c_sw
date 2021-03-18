@@ -1,0 +1,10 @@
+    n=0
+    do j = JLIMITS
+      do i = ILIMITS
+        do k=1,npz
+          COPYA NUM COPYB
+        enddo
+        n = n + npz
+      enddo
+    enddo
+    ERRORCHECK1 NUM ERRORCHECK2

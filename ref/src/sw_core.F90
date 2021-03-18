@@ -28,8 +28,12 @@ module sw_core_mod
 
   implicit none
 
-  integer :: do_profile = 0  ! Flag for enabling profiling at runtime
+  ! namelist variables
+  integer :: do_profile = 0  ! Namelist flag for enabling profiling at runtime
+  integer :: rows = 0        ! Namelist variable for MPI decomposition
+  integer :: cols = 0        ! Namelist variable for MPI decomposition
 
+  integer        :: ret      ! Return status
   real, parameter:: big_number = 1.E8
 
   ! 4-pt Lagrange interpolation
@@ -55,6 +59,20 @@ module sw_core_mod
   integer :: npy
   integer :: npz
 
+  ! exchange variables
+  integer :: max_halo_size
+  integer :: num_sends    = 8  ! There are eight neighbors, four sides and four corners
+  integer :: num_recvs    = 8  ! There are eight neighbors, four sides and four corners
+  integer :: send_dest     (8) ! The eight neighbors to send to
+  integer :: recv_source   (8) ! The eight neighbors to receive from
+  integer :: send_halo_size(8) ! The halo zize for each MPI_ISEND for each rank
+  integer :: recv_halo_size(8) ! The halo zize for each MPI_IRECV for each rank
+  integer :: rank         = 0  ! The rank of each MPI tasks
+  integer :: Ntasks       = 1  ! The number of MPI tasks
+  integer :: depth        = 3  ! The depth of the halo
+  integer,allocatable :: statuses   (:,:)                  ! Status for MPI_WAITALL
+  real   ,allocatable :: send_buffer(:,:),recv_buffer(:,:) ! Buffers for sending and receiving the halo
+
   ! State variables
   logical           :: sw_corner, se_corner, ne_corner, nw_corner
   real              :: dt2
@@ -72,7 +90,7 @@ module sw_core_mod
   real, allocatable :: dxa(:,:), dya(:,:)
   real, allocatable :: delpc(:,:,:), delp(:,:,:)
   real, allocatable :: ptc(:,:,:), pt(:,:,:)
-  real, allocatable :: u(:,:,:), v(:,:,:), w(:,:,:)
+  real, allocatable :: u(:,:,:), v(:,:,:), w(:,:,:), usave(:,:,:)
   real, allocatable :: uc(:,:,:), vc(:,:,:), wc(:,:,:)
   real, allocatable :: ua(:,:,:), va(:,:,:)
   real, allocatable :: ut(:,:,:), vt(:,:,:)
@@ -105,8 +123,10 @@ contains
     real,    intent(   in), dimension(isd:ied+1,jsd:jed    ) :: rsin_u
     real,    intent(   in), dimension(isd:ied,  jsd:jed+1  ) :: rsin_v
     real,    intent(   in), dimension(isd:ied,  jsd:jed    ) :: rsin2, dxa, dya
-    real,    intent(inout), dimension(isd:ied,  jsd:jed+1  ) :: u, vc
-    real,    intent(inout), dimension(isd:ied+1,jsd:jed    ) :: v, uc
+    real,    intent(   in), dimension(isd:ied,  jsd:jed+1  ) :: u
+    real,    intent(   in), dimension(isd:ied+1,jsd:jed    ) :: v
+    real,    intent(inout), dimension(isd:ied+1,jsd:jed    ) :: uc
+    real,    intent(inout), dimension(isd:ied,  jsd:jed+1  ) :: vc
     real,    intent(inout), dimension(isd:ied,  jsd:jed    ) :: delp, pt, ua
     real,    intent(inout), dimension(isd:ied,  jsd:jed    ) :: va, ut, vt, w
     real,    intent(  out), dimension(isd:ied,  jsd:jed    ) :: delpc, ptc, wc
@@ -120,7 +140,6 @@ contains
     real                                  :: dt4
     integer                               :: i, j
     integer                               :: iep1, jep1
-    integer                               :: ret
 
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
@@ -398,7 +417,6 @@ contains
     real    :: vf(is-1:ie+2, js-2:je+2)
     integer :: i, j
     integer :: is2, ie1
-    integer :: ret
 
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
@@ -499,7 +517,6 @@ contains
     ! Local
     real, dimension(isd:ied, jsd:jed) :: utmp, vtmp
     integer :: i, j, ifirst, ilast
-    integer :: ret
 
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
@@ -786,8 +803,6 @@ contains
     real,    intent(inout) :: q2(isd:ied, jsd:jed)
     logical, intent(   in) :: sw_corner, se_corner, ne_corner, nw_corner
 
-     integer :: ret
-
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
     ret = gptlstart('fill2_4corners')
@@ -868,8 +883,6 @@ contains
     integer, intent(   in) :: dir     ! 1: x-dir; 2: y-dir
     real,    intent(inout) :: q(isd:ied, jsd:jed)
     logical, intent(   in) :: sw_corner, se_corner, ne_corner, nw_corner
-
-    integer :: ret
  
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
@@ -962,6 +975,7 @@ contains
     allocate(ptc    (isd:ied,   jsd:jed,   npz))
     allocate(pt     (isd:ied,   jsd:jed,   npz))
     allocate(u      (isd:ied,   jsd:jed+1, npz))
+    allocate(usave  (isd:ied,   jsd:jed+1, npz))
     allocate(v      (isd:ied+1, jsd:jed,   npz))
     allocate(w      (isd:ied,   jsd:jed,   npz))
     allocate(uc     (isd:ied+1, jsd:jed,   npz))
@@ -972,6 +986,8 @@ contains
     allocate(ut     (isd:ied,   jsd:jed,   npz))
     allocate(vt     (isd:ied,   jsd:jed,   npz))
     allocate(divg_d (isd:ied+1, jsd:jed+1, npz))
+    allocate(send_buffer(max_halo_size,8)) !There are eight neighbors, four sides and four corners.
+    allocate(recv_buffer(max_halo_size,8)) !There are eight neighbors, four sides and four corners.
 
     ! Initialize state arrays
     rarea(:,:) = 0.0
@@ -1010,6 +1026,7 @@ contains
     ut(:,:,:) = 0.0
     vt(:,:,:) = 0.0
     divg_d(:,:,:) = 0.0
+    usave (:,:,:) = 0.0
 
   end subroutine allocate_state
 
@@ -1266,7 +1283,7 @@ contains
     real             :: data(:,:,:)
 
     ! Note: Assumed shape array sections always start with index=1 for all dimensions
-    !       So we don't have to know start/end indices here
+    !       So we do not have to know start/end indices here
     write(*,'(A5,A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1,1),  &
                             data(size(data,1), size(data,2), size(data,3)), &
                             sqrt(sum(data**2) / size(data))
@@ -1285,7 +1302,7 @@ contains
     real            ,intent(IN) :: data(:,:,:)
 
     ! Note: Assumed shape array sections always start with index=1 for all dimensions
-    !       So we don't have to know start/end indices here
+    !       So we do not have to know start/end indices here
     write(unit,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1,1),  &
                                              data(size(data,1), size(data,2), size(data,3)), &
                                              sqrt(sum(data**2) / size(data))
@@ -1303,7 +1320,7 @@ contains
     real             :: data(:,:)
 
     ! Note: Assumed shape array sections always start with index=1 for all dimensions
-    !       So we don't have to know start/end indices here
+    !       So we do not have to know start/end indices here
     write(*,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1), &
                             data(size(data,1), size(data,2)),            &
                             sqrt(sum(data**2) / size(data))
@@ -1323,7 +1340,7 @@ contains
     real            ,intent(IN) :: data(:,:)
 
     ! Note: Assumed shape array sections always start with index=1 for all dimensions
-    !       So we don't have to know start/end indices here
+    !       So we do not have to know start/end indices here
     write(unit,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1), &
                                              data(size(data,1), size(data,2)),            &
                                              sqrt(sum(data**2) / size(data))
@@ -1382,6 +1399,9 @@ contains
       write(*,*) "Dimensions and indices of input data are inconsistent"
       stop 1
     end if
+
+    !Calculate the total halo size (halo is 3 deep)
+    max_halo_size = max( 3*(jed-jsd+1)*npz , 3*(ied-isd+1)*npz )
 
     ! Allocate and initialize the state
     call allocate_state()
@@ -1774,6 +1794,212 @@ contains
     call close_file(ncFileID)
 
   end subroutine write_subdomain
+
+#ifdef ENABLE_MPI
+  !------------------------------------------------------------------
+  ! This routine calculates the neighbors for each rank by wrapping around the boundaries
+  ! The neighbors are used to calculate send_dest and recv_source
+  ! The mpi domain is specified by the two namelist variables ROWS and COLS
+  ! The domain is a rectangle ROWSxCOLS in size.
+  ! The eight neighbors of an MPI task are numbered clockwise 1 to 8 starting with the left side and including the corners.
+  ! Example of 3x4 domain:
+  !    0    1    2    3
+  !    4    5    6    7
+  !    8    9   10   11
+  !
+  ! For example:
+  !   The neighbors of rank 6 are: 5,  1,  2,  3,  7, 11, 10,  9
+  !   The neighbors of rank 0 are: 3, 11,  8,  9,  1,  5,  4,  7
+  !------------------------------------------------------------------
+  subroutine get_neighbors
+
+    integer :: domain(cols,rows)
+    integer :: neighbors(8)
+    integer :: i,j,n,row,col,rowm1,rowp1,colm1,colp1
+
+    !Set the domain.
+    row = -1
+    col = -1
+    n = 0
+    do j=1,rows
+      do i=1,cols
+        domain(i,j) = n
+        if(rank==n) then !Set the col and row for my rank
+          col = i
+          row = j
+        endif
+        n=n+1
+      enddo
+    enddo
+    if(row<0.or.col<0) then
+      print*,'Error in get_neighbors: row<0.or.col<0',rank,row,col
+      stop
+    endif
+
+    !Set indecies for domain wraparound
+    colm1 = col - 1
+    if(colm1 < 1) then
+      colm1 = cols
+    endif
+    rowm1 = row - 1
+    if(rowm1 < 1) then
+      rowm1 = rows
+    endif
+    colp1 = col + 1
+    if(colp1 > cols) then
+      colp1 = 1
+    endif
+    rowp1 = row + 1
+    if(rowp1 > rows) then
+      rowp1 = 1
+    endif
+
+    !Calculate the neighbors
+    neighbors(1) = domain( colm1 , row   )
+    neighbors(2) = domain( colm1 , rowm1 )
+    neighbors(3) = domain( col   , rowm1 )
+    neighbors(4) = domain( colp1 , rowm1 )
+    neighbors(5) = domain( colp1 , row   )
+    neighbors(6) = domain( colp1 , rowp1 )
+    neighbors(7) = domain( col   , rowp1 )
+    neighbors(8) = domain( colm1 , rowp1 )
+
+    !Calculate the send destinations and the receive source
+    !The halo is not sent from the perimeter but instead sent from the existing halo
+    !The perimeter is on the same side as the neighbor but the correct halo is on the opposide side
+    !Therefore send_dest must be set to the opposite neighbor
+    send_dest(1) = neighbors(5)
+    send_dest(2) = neighbors(6)
+    send_dest(3) = neighbors(7)
+    send_dest(4) = neighbors(8)
+    send_dest(5) = neighbors(1)
+    send_dest(6) = neighbors(2)
+    send_dest(7) = neighbors(3)
+    send_dest(8) = neighbors(4)
+    !The halo of recv_source is on the same side a the neighbor.
+    recv_source = neighbors
+
+  end subroutine get_neighbors
+
+
+  !------------------------------------------------------------------
+  ! Exchange the halo between MPI tasks
+  ! Method:  
+  !  The c_sw serial kernel is one MPI domain, a corner domain, complete with halo. 
+  !  c_sw is parallelized by runniing multiple copies of the serial kernel.
+  !  Because all MPI domains are the same, the perimeter cannot be sent to the neighbor halos as usual
+  !  Instead, the exchange is simulated by exchanging the existing halos.
+  !------------------------------------------------------------------
+  subroutine exchange
+  
+    use mpi
+    integer :: requests(16)  !Eight request for sending + Eight requests for receiving. 
+    integer :: tag = 88
+    integer :: request_count,status
+    integer :: n
+
+    if(depth<1 .or. depth>3) then
+      print*,'Error in unpack depth<1 .or. depth>3: rank,dppty=',rank,depth
+      stop
+    endif
+
+    !Pack the halo into send_buffer
+    call pack
+
+    !Calculate recv_halo_size (See subroutine get_neighbors)
+    recv_halo_size(1) = send_halo_size(5)
+    recv_halo_size(2) = send_halo_size(6)
+    recv_halo_size(3) = send_halo_size(7)
+    recv_halo_size(4) = send_halo_size(8)
+    recv_halo_size(5) = send_halo_size(1)
+    recv_halo_size(6) = send_halo_size(2)
+    recv_halo_size(7) = send_halo_size(3)
+    recv_halo_size(8) = send_halo_size(4)
+
+    !Send the data to send_dest
+    request_count=0
+    do n = 1,num_sends
+      request_count=request_count+1
+      call mpi_isend( send_buffer(1,n) , send_halo_size(n) , MPI_DOUBLE_PRECISION , send_dest(n) , tag ,&
+                      MPI_COMM_WORLD , requests(request_count) , status )
+      if(status /=0) then
+        print*,'Error in exchange: MPI_ISEND returned bad status= ',status
+        print*,n,send_halo_size(n),send_dest(n),request_count
+        stop
+      endif
+    enddo
+
+    !Receive the data to recv_source
+    do n = 1,num_recvs
+      request_count=request_count+1
+      call mpi_irecv( recv_buffer(1,n) , recv_halo_size(n) , MPI_DOUBLE_PRECISION , recv_source(n) , tag ,&
+                      MPI_COMM_WORLD , requests(request_count) , status)
+      if(status /=0) then
+        print*,'Error in exchange: MPI_RECV returned bad status= ',status
+        print*,n,recv_halo_size(n),recv_source(n),request_count
+        stop
+      endif
+    enddo
+    call MPI_WAITALL(request_count, requests, statuses, status)
+    if(status /=0) then
+      print*,'Error in exchange: MPI_WAITALL returned bad status=',status,request_count
+      stop
+    endif
+    call unpack
+
+  end subroutine exchange
+
+  subroutine pack
+  ! Pack the data
+#undef  COPYA
+#undef  COPYB
+#undef  ERRORCHECK1
+#undef  ERRORCHECK2
+#define COPYA send_buffer(k+n, 
+#define COPYB ) = u(i,j,k)
+#define ERRORCHECK1  send_halo_size(
+#define ERRORCHECK2  )=n
+#include "setup_pack_unpk.code"
+  end subroutine pack
+
+  subroutine unpack
+  ! Unpack the data
+#undef  COPYA
+#undef  COPYB
+#undef  ERRORCHECK1
+#undef  ERRORCHECK2
+#define COPYA u(i,j,k) = recv_buffer(k+n, 
+#define COPYB )
+#define ERRORCHECK1  call check_halo_size(n,
+#define ERRORCHECK2  )
+#include "setup_pack_unpk.code"
+  end subroutine unpack
+
+  subroutine check_halo_size(n,number)
+    integer,intent(in) :: n,number
+    if ( n /= recv_halo_size(number)) then
+      print"('Error in unpack: n /= send_halo_size(',i1,')',2i5)",number,n,send_halo_size(number),rank
+      stop
+    endif
+  end subroutine check_halo_size
+
+  subroutine test_exchange(matches)
+    logical,intent (out) :: matches
+    integer              :: nz,j,i
+    matches = .true.
+    do nz = 1,npz
+      do j=jsd,jed+1
+        do i=isd,ied
+          if( u(i,j,nz) /= usave(i,j,nz) ) then
+            matches = .false.
+            print*,'ERROR',nz,j,i,u(i,j,nz),usave(i,j,nz)
+          endif
+        enddo
+      enddo
+    enddo
+  end subroutine test_exchange
+
+#endif
 
 end module sw_core_mod
 

@@ -114,12 +114,13 @@ GPTL timing information is written to `timing.*` files in the directory where th
 
 ### Building with MPI support
 
-This kernel can be built with MPI to simulate a parallel execution.  The `c_sw` kernel was extracted
-from a much larger MPI code where halo exchanges took place at a higher level. Therefore, this kernel
-is not a true parallel program. However, when built with MPI support this kernel simulates a parallel 
-MPI execution by running N copies of the serial version and performing a single, simulated, halo
-exchange (not implemented yet). To enable simulated parallel MPI execution, add `-DENABLE_MPI=1` to
-the `cmake` command. For example:
+This kernel can be built with MPI to simulate a parallel execution.  The `c_sw` kernel was extracted 
+from a much larger MPI code where halo exchanges took place at a higher level.  This kernel is one MPI 
+task taken from the large MPI code. This kernel is the lower left hand MPI domain complete with halos.  
+Therefore, this kernel runs in serial but the serial code references into the halo.  When built with 
+MPI support this kernel simulates a parallel MPI execution by running N copies of the extracted kernel 
+and performing a halo exchange of the variable U. To enable parallel MPI execution, add `-DENABLE_MPI=1` 
+to the `cmake` command. For example:
 
 ```bash
 $ cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 ..

@@ -1,0 +1,75 @@
+integer :: n,j,i,k
+
+!This assumes the clockwise order starting with the left neighbor as described in subroutine get_neighbors
+
+! Left halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 1
+#define JLIMITS jsd+3-depth,jsd+2
+#define ILIMITS is,ie
+#include "pack_unpk.code"
+
+! Top left corner halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 2
+#define JLIMITS jsd+3-depth,jsd+2
+#define ILIMITS isd+3-depth,isd+2
+#include "pack_unpk.code"
+
+! Top halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 3
+#define JLIMITS js,je
+#define ILIMITS isd+3-depth,isd+2
+#include "pack_unpk.code"
+
+! Top right corner halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 4
+#define JLIMITS jed-2,jed+depth-3
+#define ILIMITS isd+3-depth,isd+2
+#include "pack_unpk.code"
+
+! Right halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 5
+#define JLIMITS jed-2,jed+depth-3
+#define ILIMITS is,ie
+#include "pack_unpk.code"
+
+! Bottom right corner halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 6
+#define JLIMITS jed-2,jed+depth-3
+#define ILIMITS ied-2,ied+depth-3
+#include "pack_unpk.code"
+
+! Bottom halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 7
+#define JLIMITS js,je
+#define ILIMITS ied-2,ied+depth-3
+#include "pack_unpk.code"
+
+! Bottom left corner halo
+#undef  NUM
+#undef  JLIMITS
+#undef  ILIMITS
+#define NUM 8
+#define JLIMITS jsd+3-depth,jsd+2
+#define ILIMITS ied-2,ied+depth-3
+#include "pack_unpk.code"

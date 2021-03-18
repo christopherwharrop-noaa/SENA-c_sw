@@ -21,11 +21,12 @@ program sw_driver
   integer :: nthreads                           ! # of OpenMP threads
   integer :: narg                               ! # of command line arguments
   integer :: count_start, count_end, count_rate ! Timer start/stop
-  integer :: ret                                ! Return status
-  integer :: rank = 0                           ! The rank of MPI tasks
-  integer :: ierr                               ! Error return
   integer :: log_file_unit                      ! unit number for writing out log files
   integer, external :: print_affinity           ! External subroutine
+#ifdef ENABLE_MPI
+  integer :: ierr                               ! Error return
+  logical :: matches                            ! Used for testing exchange
+#endif
 
   ! Input configuration variables
   character(len=64) :: namelist_file = "test_input/c_sw_12x24.nl"
@@ -35,13 +36,18 @@ program sw_driver
   integer           :: nl_unit
 
   ! Input namelists
-  namelist /io/       input_data_dir, input_file,   &
-                      output_data_dir, output_file, &
-                      log_dir, log_file
-  namelist /debug/    do_profile                ! Defined in sw_core_mod
+  namelist /io/            input_data_dir, input_file,   &
+                           output_data_dir, output_file, &
+                           log_dir, log_file
+  namelist /debug/         do_profile                     ! Defined in sw_core_mod
+  namelist /decomposition/ rows,cols                      ! Defined in sw_core_mod
 
 #ifdef ENABLE_MPI
   call mpi_init(ierr)
+  if(ierr /= 0) then
+    print*,'Error in sw_driver: Error initializing MPI error =',ierr
+    stop
+  endif
 #endif
 
   ! Get the number of arguments
@@ -51,9 +57,19 @@ program sw_driver
     stop 1
   end if
 
-  ! Get the MPI rank
 #ifdef ENABLE_MPI
+  ! Get the MPI rank
   call mpi_comm_rank(mpi_comm_world, rank, ierr)
+  if(ierr /= 0) then
+    print*,'Error in sw_driver: Error getting the rank',ierr,rank
+  endif
+  ! Get the number of MPI tasks
+  call mpi_comm_size(mpi_comm_world, Ntasks, ierr)
+  if(ierr /= 0) then
+    print*,'Error in sw_driver: Error getting the number of MPI tasks',ierr,Ntasks
+    print*,'Error, number of MPI tasks =',ierr,Ntasks
+  endif
+  print*,'Running in parallel mode with MPI tasks =',Ntasks
 #endif
 
   ! Get the namelist file name from the argument list
@@ -67,6 +83,9 @@ program sw_driver
 
   ! Read the debug settings from the namelist
   read(nl_unit, nml=debug)
+
+  ! Read the MPI decomposition from the namelist
+  read(nl_unit, nml=decomposition)
 
   ! Get OMP_NUM_THREADS value
   nthreads = omp_get_max_threads()
@@ -92,6 +111,25 @@ program sw_driver
   ! Read the input state from the NetCDF input file
   call read_state(TRIM(input_data_dir) // '/' // TRIM(input_file))
 
+#ifdef ENABLE_MPI
+  ! Make sure rows*cols equal the total nmber of MPI tasks
+  if (rows*cols /= Ntasks) then
+    print*,'Error in sw_driver running in parallel mode'
+    print*,'rows*cols must equal the number of MPI tasks'
+    print*,'rank,rows,cols,Ntasks=', rank,rows,cols,Ntasks
+    stop
+  endif
+
+  ! Copy u to usave for testing the exchange
+    usave = u
+
+  ! Get the MPI task neighbore for the exchange
+  call get_neighbors
+
+  ! Allocate statuses for MPI_WAITALL: 0:15 because there are 8 sends and 8 receives
+  allocate( statuses(MPI_STATUS_SIZE, 0:15) )
+#endif
+
   ! Write out configuration settings to statistics log file
   write(log_file_unit, '(A,I0,A,I0)') 'Problem size = ', ie - is + 1, "x", je - js + 1
   write(log_file_unit, '(A,I0)') 'nthreads = ', nthreads
@@ -102,6 +140,28 @@ program sw_driver
   ! Get the start time
   call system_clock(count_start, count_rate)
 
+#ifdef ENABLE_MPI
+  ! Exchange the halo for the variable u
+#ifdef ENABLE_GPTL
+  if (do_profile == 1) then
+     ret = gptlstart('exchange')
+  end if
+#endif
+  call exchange
+#ifdef ENABLE_GPTL
+  if (do_profile == 1) then
+     ret = gptlstop('exchange')
+  end if
+#endif
+
+  !Test the exchange
+  call test_exchange(matches)
+  if( .not. matches) then
+    print*,'Error in sw_driver: Exchange error, halo does not match perimeter, rank= ',rank
+    stop
+  endif
+#endif
+
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
      ret = gptlstart('kernel')
@@ -111,15 +171,15 @@ program sw_driver
   ! Run the kernel
   !$OMP parallel do schedule(runtime)
   do k=1, npz
-     call c_sw(sw_corner, se_corner, nw_corner, ne_corner,           &
-               rarea, rarea_c, sin_sg, cos_sg, sina_v, cosa_v,       &
-               sina_u, cosa_u, fC, rdxc, rdyc, dx, dy, dxc, dyc,     &
-               cosa_s, rsin_u, rsin_v, rsin2, dxa, dya,              &
-               delpc(isd,jsd,k), delp(isd,jsd,k), ptc(isd,jsd,k),    &
-               pt(isd,jsd,k), u(isd,jsd,k), v(isd,jsd,k),            &
-               w(isd,jsd,k), uc(isd,jsd,k), vc(isd,jsd,k),           &
-               ua(isd,jsd,k), va(isd,jsd,k), wc(isd,jsd,k),          &
-               ut(isd,jsd,k), vt(isd,jsd,k), divg_d(isd,jsd,k), dt2)
+     call c_sw(sw_corner, se_corner, nw_corner, ne_corner,               &
+               rarea, rarea_c, sin_sg, cos_sg, sina_v, cosa_v,           &
+               sina_u, cosa_u, fC, rdxc, rdyc, dx, dy, dxc, dyc,         &
+               cosa_s, rsin_u, rsin_v, rsin2, dxa, dya,                  &
+               delpc(isd,jsd,k), delp(isd,jsd,k), ptc   (isd,jsd,k),     &
+               pt   (isd,jsd,k), u   (isd,jsd,k), v     (isd,jsd,k),     &
+               w    (isd,jsd,k), uc  (isd,jsd,k), vc    (isd,jsd,k),     &
+               ua   (isd,jsd,k), va  (isd,jsd,k), wc    (isd,jsd,k),     &
+               ut   (isd,jsd,k), vt  (isd,jsd,k), divg_d(isd,jsd,k), dt2)
   enddo
 
 #ifdef ENABLE_GPTL
