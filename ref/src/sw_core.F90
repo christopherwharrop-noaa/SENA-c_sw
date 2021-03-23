@@ -22,6 +22,8 @@
 module sw_core_mod
  
   use netCDFModule
+  use interpolate
+  use omp_lib
 #ifdef ENABLE_GPTL
   use gptl
 #endif
@@ -106,7 +108,8 @@ contains
     real,    intent(   in), dimension(isd:ied,  jsd:jed+1  ) :: rsin_v
     real,    intent(   in), dimension(isd:ied,  jsd:jed    ) :: rsin2, dxa, dya
     real,    intent(inout), dimension(isd:ied,  jsd:jed+1  ) :: u, vc
-    real,    intent(inout), dimension(isd:ied+1,jsd:jed    ) :: v, uc
+    real,    intent(inout), dimension(isd:ied+1,jsd:jed    ) :: uc
+    real,    intent(in),    dimension(isd:ied+1,jsd:jed    ) :: v
     real,    intent(inout), dimension(isd:ied,  jsd:jed    ) :: delp, pt, ua
     real,    intent(inout), dimension(isd:ied,  jsd:jed    ) :: va, ut, vt, w
     real,    intent(  out), dimension(isd:ied,  jsd:jed    ) :: delpc, ptc, wc
@@ -120,9 +123,9 @@ contains
     real                                  :: dt4
     integer                               :: i, j
     integer                               :: iep1, jep1
-    integer                               :: ret
 
 #ifdef ENABLE_GPTL
+  integer                               :: ret
   if (do_profile == 1) then
     ret = gptlstart('c_sw')
   end if
@@ -134,6 +137,7 @@ contains
     call d2a2c_vect(sw_corner, se_corner, ne_corner, nw_corner,            &
                     sin_sg, cosa_u, cosa_v, cosa_s, rsin_u, rsin_v, rsin2, &
                     dxa, dya, u, v, ua, va, uc, vc, ut, vt)
+    print *,OMP_GET_THREAD_NUM(),"end d2a2c_vect"
 
     if ( nord > 0 ) then
       call divergence_corner(sw_corner, se_corner, ne_corner, nw_corner, &
@@ -398,9 +402,9 @@ contains
     real    :: vf(is-1:ie+2, js-2:je+2)
     integer :: i, j
     integer :: is2, ie1
-    integer :: ret
 
 #ifdef ENABLE_GPTL
+  integer :: ret
   if (do_profile == 1) then
     ret = gptlstart('divergence_corner')
   end if
@@ -499,9 +503,11 @@ contains
     ! Local
     real, dimension(isd:ied, jsd:jed) :: utmp, vtmp
     integer :: i, j, ifirst, ilast
-    integer :: ret
+    real, dimension(4) :: ua_slice, dxa_slice
+    real, dimension(4) :: va_slice, dya_slice
 
 #ifdef ENABLE_GPTL
+  integer :: ret
   if (do_profile == 1) then
      ret = gptlstart ('d2a2c_vect')
   end if
@@ -632,7 +638,15 @@ contains
     if ( is == 1 ) then
       do j = js-1, je+1
         uc(0, j) = c1 * utmp(-2, j) + c2 * utmp(-1, j) + c3 * utmp(0, j)
-        ut(1, j) = edge_interpolate4(ua(-1:2, j), dxa(-1:2, j))
+        ua_slice(1) = ua(-1,j)
+        ua_slice(2) = ua( 0,j)
+        ua_slice(3) = ua( 1,j)
+        ua_slice(4) = ua( 2,j)
+        dxa_slice(1) = dxa(-1,j)
+        dxa_slice(2) = dxa( 0,j)
+        dxa_slice(3) = dxa( 1,j)
+        dxa_slice(4) = dxa( 2,j)
+        ut(1, j) = edge_interpolate4(ua_slice, dxa_slice)
         !Want to use the UPSTREAM value
         if (ut(1, j) < 0.) then
           uc(1, j) = ut(1, j) * sin_sg(0, j, 3)
@@ -649,7 +663,15 @@ contains
           uc(npx-1, j) = c1 * utmp(npx-3, j) + c2 * utmp(npx-2, j) + c3 * utmp(npx-1, j)
           i = npx
           ut(i, j) = 0.25 * (-ua(i-2, j) + 3. * (ua(i-1, j) + ua(i, j)) - ua(i+1, j))
-          ut(i, j) = edge_interpolate4(ua(i-2:i+1, j), dxa(i-2:i+1, j))
+          ua_slice(1) = ua(i-2,j)
+          ua_slice(2) = ua(i-1,j)
+          ua_slice(3) = ua(i+0,j)
+          ua_slice(4) = ua(i+1,j)
+          dxa_slice(1) = dxa(i-2,j)
+          dxa_slice(2) = dxa(i-1,j)
+          dxa_slice(3) = dxa(i+0,j)
+          dxa_slice(4) = dxa(i+1,j)
+          ut(i, j) = edge_interpolate4(ua_slice, dxa_slice)
           if ( ut(i,j) < 0. ) then
             uc(i, j) = ut(i, j) * sin_sg(i-1, j, 3)
           else
@@ -706,7 +728,15 @@ contains
     do j = js-1, je+2
       if ( j == 1 ) then
         do i = is-1, ie+1
-          vt(i, j) = edge_interpolate4(va(i, -1:2), dya(i, -1:2))
+          va_slice(1) = va(i,-1)
+          va_slice(2) = va(i, 0)
+          va_slice(3) = va(i,+1)
+          va_slice(4) = va(i,+2)
+          dya_slice(1) = dya(i,-1)
+          dya_slice(2) = dya(i, 0)
+          dya_slice(3) = dya(i,+1)
+          dya_slice(4) = dya(i,+2)
+          vt(i, j) = edge_interpolate4(va_slice, dya_slice)
           if ( vt(i, j) < 0. ) then
             vc(i, j) = vt(i, j) * sin_sg(i, j-1, 4)
           else
@@ -726,7 +756,15 @@ contains
       elseif ( j == npy ) then
         do i = is-1, ie+1
           vt(i, j) = 0.25 * (-va(i, j-2) + 3. * (va(i, j-1) + va(i, j)) - va(i, j+1))
-          vt(i, j) = edge_interpolate4(va(i, j-2:j+1), dya(i, j-2:j+1))
+          va_slice(1) = va(i,j-2)
+          va_slice(2) = va(i,j-1)
+          va_slice(3) = va(i,j+0)
+          va_slice(4) = va(i,j+1)
+          dya_slice(1) = dya(i,j-2)
+          dya_slice(2) = dya(i,j-1)
+          dya_slice(3) = dya(i,j+0)
+          dya_slice(4) = dya(i,j+1)
+          vt(i, j) = edge_interpolate4(va_slice, dya_slice)
           if ( vt(i, j) < 0. ) then
             vc(i, j) = vt(i, j) * sin_sg(i, j-1, 4)
           else
@@ -786,9 +824,8 @@ contains
     real,    intent(inout) :: q2(isd:ied, jsd:jed)
     logical, intent(   in) :: sw_corner, se_corner, ne_corner, nw_corner
 
-     integer :: ret
-
 #ifdef ENABLE_GPTL
+  integer :: ret
   if (do_profile == 1) then
     ret = gptlstart('fill2_4corners')
   end if
@@ -868,10 +905,9 @@ contains
     integer, intent(   in) :: dir     ! 1: x-dir; 2: y-dir
     real,    intent(inout) :: q(isd:ied, jsd:jed)
     logical, intent(   in) :: sw_corner, se_corner, ne_corner, nw_corner
-
-    integer :: ret
  
 #ifdef ENABLE_GPTL
+  integer :: ret
   if (do_profile == 1) then
      ret = gptlstart('fill_4corners')
   end if
@@ -1145,7 +1181,7 @@ contains
 
     write(*,'(A4)') "TEST"
     write(*,'(A5,A115)') "TEST ", repeat("=",115)
-    write(*,'(A5,A20)') "TEST ", msg
+    write(*,'(A5,A30)') "TEST ", msg
     write(*,'(A5,A115)') "TEST ", repeat("=",115)
     write(*,'(A5,A15,5A20)') "TEST ", "Variable", "Min", "Max", "First", "Last", "RMS"
     write(*,'(A5,A115)') "TEST ", repeat("-",115)
@@ -1206,7 +1242,7 @@ contains
 
     write(test_file_unit,'(A4)') "TEST"
     write(test_file_unit,'(A5,A115)') "TEST ", repeat("=",115)
-    write(test_file_unit,'(A5,A20)') "TEST ", msg
+    write(test_file_unit,'(A5,A30)') "TEST ", msg
     write(test_file_unit,'(A5,A115)') "TEST ", repeat("=",115)
     write(test_file_unit,'(A5,A15,5A20)') "TEST ", "Variable", "Min", "Max", "First", "Last", "RMS"
     write(test_file_unit,'(A5,A115)') "TEST ", repeat("-",115)
@@ -1254,6 +1290,24 @@ contains
 
   end subroutine write_state_stats
 
+  !------------------------------------------------------------------
+  ! print_2d_variable
+  !
+  ! Prints statistics for a 2d state variable
+  !------------------------------------------------------------------
+  subroutine print_2d_variable(name, data)
+
+    character(len=*) :: name
+    real             :: data(:,:)
+
+    ! Note: Assumed shape array sections always start with index=1 for all
+    ! dimensions
+    !       So we don't have to know start/end indices here
+    write(*,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1), &
+                            data(size(data,1), size(data,2)),            &
+                            sqrt(sum(data**2) / size(data))
+
+  end subroutine print_2d_variable
 
   !------------------------------------------------------------------
   ! print_3d_variable
@@ -1265,7 +1319,8 @@ contains
     character(len=*) :: name
     real             :: data(:,:,:)
 
-    ! Note: Assumed shape array sections always start with index=1 for all dimensions
+    ! Note: Assumed shape array sections always start with index=1 for
+    ! all dimensions
     !       So we don't have to know start/end indices here
     write(*,'(A5,A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1,1),  &
                             data(size(data,1), size(data,2), size(data,3)), &
@@ -1291,25 +1346,6 @@ contains
                                              sqrt(sum(data**2) / size(data))
 
   end subroutine write_3d_variable
-
-  !------------------------------------------------------------------
-  ! print_2d_variable
-  !
-  ! Prints statistics for a 2d state variable
-  !------------------------------------------------------------------
-  subroutine print_2d_variable(name, data)
-
-    character(len=*) :: name
-    real             :: data(:,:)
-
-    ! Note: Assumed shape array sections always start with index=1 for all dimensions
-    !       So we don't have to know start/end indices here
-    write(*,'(A5, A15,5ES20.10)') "TEST ", name, minval(data), maxval(data), data(1,1), &
-                            data(size(data,1), size(data,2)),            &
-                            sqrt(sum(data**2) / size(data))
-
-  end subroutine print_2d_variable
-
 
   !------------------------------------------------------------------
   ! write_2d_variable
@@ -1435,9 +1471,10 @@ contains
   !
   ! Write state to NetCDF file
   !------------------------------------------------------------------
-  subroutine write_state(filename)
+  subroutine write_state(filename, interpFactor)
 
     character(len=*), intent(in) :: filename
+    integer, intent(in)          :: interpFactor
 
     ! General netCDF variables
     integer :: ncFileID
@@ -1451,6 +1488,7 @@ contains
     integer :: divg_dVarID
 
     ! Local variables
+
     character(len=8)      :: crdate  ! Needed by F90 DATE_AND_TIME intrinsic
     character(len=10)     :: crtime  ! Needed by F90 DATE_AND_TIME intrinsic
     character(len=5)      :: crzone  ! Needed by F90 DATE_AND_TIME intrinsic
@@ -1490,8 +1528,8 @@ contains
     call define_dim(ncFileID, "nj", jed-jsd+1, njDimID)
 
     ! Define the i+1, j+1 dimensions
-    call define_dim(ncFileID, "nip1", ied-isd+2, nip1DimID)
-    call define_dim(ncFileID, "njp1", jed-jsd+2, njp1DimID)
+    call define_dim(ncFileID, "nip1", ied-isd+2 + interpFactor, nip1DimID)
+    call define_dim(ncFileID, "njp1", jed-jsd+2 + interpFactor, njp1DimID)
 
     ! Define the k dimension
     call define_dim(ncFileID, "nk", npz, nkDimID)
@@ -1774,6 +1812,300 @@ contains
     call close_file(ncFileID)
 
   end subroutine write_subdomain
+
+  !------------------------------------------------------------------
+  ! interpolate_state
+  !
+  ! Increase the database by interpFactor.
+  !------------------------------------------------------------------
+
+  subroutine interpolate_state(interpFactor)
+
+    integer, intent(in) :: interpFactor
+
+    ! Locals.
+    ! Define new variables to replace the old variables.
+    ! Once the new variables are defined, they will 
+    ! replace the old variables.
+
+    integer new_ied
+    integer new_jed
+
+    real, allocatable :: new_rsin2  (:,:)
+    real, allocatable :: new_dxa    (:,:)
+    real, allocatable :: new_dya    (:,:)
+    real, allocatable :: new_cosa_s (:,:)
+    real, allocatable :: new_rarea  (:,:)
+    real, allocatable :: new_sina_v (:,:)
+    real, allocatable :: new_cosa_v (:,:)
+    real, allocatable :: new_rsin_v (:,:)
+    real, allocatable :: new_rdyc   (:,:)
+    real, allocatable :: new_dx     (:,:)
+    real, allocatable :: new_dyc    (:,:)
+    real, allocatable :: new_sina_u (:,:)
+    real, allocatable :: new_cosa_u (:,:)
+    real, allocatable :: new_rdxc   (:,:)
+    real, allocatable :: new_dy     (:,:)
+    real, allocatable :: new_dxc    (:,:)
+    real, allocatable :: new_rsin_u (:,:)
+    real, allocatable :: new_rarea_c(:,:)
+    real, allocatable :: new_fC     (:,:)
+    real, allocatable :: new_sin_sg (:,:,:)
+    real, allocatable :: new_cos_sg (:,:,:)
+    real, allocatable :: new_delpc  (:,:,:)
+    real, allocatable :: new_delp   (:,:,:)
+    real, allocatable :: new_ptc    (:,:,:)
+    real, allocatable :: new_pt     (:,:,:)
+    real, allocatable :: new_w      (:,:,:)
+    real, allocatable :: new_ua     (:,:,:)
+    real, allocatable :: new_va     (:,:,:)
+    real, allocatable :: new_wc     (:,:,:)
+    real, allocatable :: new_ut     (:,:,:)
+    real, allocatable :: new_vt     (:,:,:)
+    real, allocatable :: new_v      (:,:,:)
+    real, allocatable :: new_uc     (:,:,:)
+    real, allocatable :: new_u      (:,:,:)
+    real, allocatable :: new_vc     (:,:,:)
+    real, allocatable :: new_divg_d (:,:,:)
+
+    integer :: odims(6), idims(6)
+
+    odims(1) = isd
+    odims(2) = ied
+    odims(3) = jsd
+    odims(4) = jed
+    call interpolateCalculateSpace2D(odims, interpFactor, idims)
+    allocate (new_rsin2(idims(1):idims(2), idims(3):idims(4)))
+    print *,"odims=",odims
+    print *,"idims=",idims
+    print *,"rsin2=",shape(rsin2)
+    print *,"new_rsin2=",shape(new_rsin2)
+    call interpolateArray2D(rsin2, odims, new_rsin2, idims, interpFactor)
+    allocate (new_dxa(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dxa, odims, new_dxa, idims, interpFactor)
+    allocate (new_dya(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dya, odims, new_dya, idims, interpFactor)
+    allocate (new_cosa_s(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(cosa_s, odims, new_cosa_s, idims, interpFactor)
+    allocate (new_rarea(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rarea, odims, new_rarea, idims, interpFactor)
+
+    new_ied = idims(2) ! Beginning subscripts are unchanged.
+    new_jed = idims(4) ! No changes to the 3rd dimension.
+
+    odims(1) = isd
+    odims(2) = ied
+    odims(3) = jsd
+    odims(4) = jed + 1
+    call interpolateCalculateSpace2D(odims, interpFactor, idims)
+    allocate (new_sina_v(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(sina_v, odims, new_sina_v, idims, interpFactor)
+    allocate (new_cosa_v(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(cosa_v, odims, new_cosa_v, idims, interpFactor)
+    allocate (new_rsin_v(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rsin_v, odims, new_rsin_v, idims, interpFactor)
+    allocate (new_rdyc(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rdyc, odims, new_rdyc, idims, interpFactor)
+    allocate (new_dx(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dx, odims, new_dx, idims, interpFactor)
+    allocate (new_dyc(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dyc, odims, new_dyc, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied + 1
+    odims(3) = jsd
+    odims(4) = jed
+    call interpolateCalculateSpace2D(odims, interpFactor, idims)
+    allocate (new_sina_u(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(sina_u, odims, new_sina_u, idims, interpFactor)
+    allocate (new_cosa_u(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(cosa_u, odims, new_cosa_u, idims, interpFactor)
+    allocate (new_rdxc(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rdxc, odims, new_rdxc, idims, interpFactor)
+    allocate (new_dy(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dy, odims, new_dy, idims, interpFactor)
+    allocate (new_dxc(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(dxc, odims, new_dxc, idims, interpFactor)
+    allocate (new_rsin_u(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rsin_u, odims, new_rsin_u, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied + 1
+    odims(3) = jsd
+    odims(4) = jed + 1
+    call interpolateCalculateSpace2D(odims, interpFactor, idims)
+    allocate (new_rarea_c(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(rarea_c, odims, new_rarea_c, idims, interpFactor)
+    allocate (new_fC(idims(1):idims(2), idims(3):idims(4)))
+    call interpolateArray2D(fC, odims, new_fC, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied
+    odims(3) = jsd
+    odims(4) = jed
+    odims(5) = 1
+    odims(6) = 9
+    call interpolateCalculateSpace3D(odims, interpFactor, idims)
+    allocate (new_sin_sg(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(sin_sg, odims, new_sin_sg, idims, interpFactor)
+    allocate (new_cos_sg(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(cos_sg, odims, new_cos_sg, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied
+    odims(3) = jsd
+    odims(4) = jed
+    odims(5) = 1
+    odims(6) = npz
+    call interpolateCalculateSpace3D(odims, interpFactor, idims)
+    allocate (new_delpc(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(delpc, odims, new_delpc, idims, interpFactor)
+    allocate (new_delp(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(delp, odims, new_delp, idims, interpFactor)
+    allocate (new_ptc(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(ptc, odims, new_ptc, idims, interpFactor)
+    allocate (new_pt(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(pt, odims, new_pt, idims, interpFactor)
+    allocate (new_w(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(w, odims, new_w, idims, interpFactor)
+    allocate (new_ua(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(ua, odims, new_ua, idims, interpFactor)
+    allocate (new_va(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(va, odims, new_va, idims, interpFactor)
+    allocate (new_wc(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(wc, odims, new_wc, idims, interpFactor)
+    allocate (new_ut(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(ut, odims, new_ut, idims, interpFactor)
+    allocate (new_vt(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(vt, odims, new_vt, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied + 1
+    odims(3) = jsd
+    odims(4) = jed
+    odims(5) = 1
+    odims(6) = npz
+    call interpolateCalculateSpace3D(odims, interpFactor, idims)
+    allocate (new_v(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(v, odims, new_v, idims, interpFactor)
+    allocate (new_uc(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(uc, odims, new_uc, idims, interpFactor)
+
+    odims(1) = isd
+    odims(2) = ied
+    odims(3) = jsd
+    odims(4) = jed + 1
+    odims(5) = 1
+    odims(6) = npz
+    call interpolateCalculateSpace3D(odims, interpFactor, idims)
+    allocate (new_u(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(u, odims, new_u, idims, interpFactor)
+    allocate (new_vc(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(vc, odims, new_vc, idims, interpFactor)
+    
+    odims(1) = isd
+    odims(2) = ied + 1
+    odims(3) = jsd
+    odims(4) = jed + 1
+    odims(5) = 1
+    odims(6) = npz
+    call interpolateCalculateSpace3D(odims, interpFactor, idims)
+    allocate (new_divg_d(idims(1):idims(2), idims(3):idims(4), idims(5):idims(6)))
+    call interpolateArray3D(divg_d, odims, new_divg_d, idims, interpFactor)
+
+    ! Exchange the old dimensions to the new dimensions.
+    ied = new_ied
+    jed = new_jed
+    is = 1
+    ie = new_ied - 3
+    js = 1
+    je = new_jed - 3
+    nord = 1
+    npx = ie + 1
+    npy = je + 1
+    npz = 127
+
+    call deallocate_state()
+    call allocate_state()
+
+    ! Switch the old arrays to the new arrays.
+    sin_sg = new_sin_sg
+    cos_sg = new_cos_sg
+    rsin2  = new_rsin2
+    dxa    = new_dxa
+    dya    = new_dya
+    cosa_s = new_cosa_s
+    rarea  = new_rarea
+    sina_v = new_sina_v
+    cosa_v = new_cosa_v
+    rsin_v = new_rsin_v
+    rdyc   = new_rdyc
+    dx     = new_dx
+    dyc    = new_dyc
+    sina_u = new_sina_u
+    cosa_u = new_cosa_u
+    rdxc   = new_rdxc
+    dy     = new_dy
+    dxc    = new_dxc
+    rsin_u = new_rsin_u
+    rarea_c= new_rarea_c
+    fC     = new_fC
+    delpc  = new_delpc
+    delp   = new_delp
+    ptc    = new_ptc
+    pt     = new_pt
+    w      = new_w
+    ua     = new_ua
+    va     = new_va
+    wc     = new_wc
+    ut     = new_ut
+    vt     = new_vt
+    v      = new_v
+    uc     = new_uc
+    u      = new_u
+    vc     = new_vc
+    divg_d = new_divg_d
+
+    ! Deallocate the new arrays.  They are not needed now.
+
+    deallocate(new_sin_sg )
+    deallocate(new_cos_sg )
+    deallocate(new_rsin2  )
+    deallocate(new_dxa    )
+    deallocate(new_dya    )
+    deallocate(new_cosa_s )
+    deallocate(new_rarea  )
+    deallocate(new_sina_v )
+    deallocate(new_cosa_v )
+    deallocate(new_rsin_v )
+    deallocate(new_rdyc   )
+    deallocate(new_dx     )
+    deallocate(new_dyc    )
+    deallocate(new_sina_u )
+    deallocate(new_cosa_u )
+    deallocate(new_rdxc   )
+    deallocate(new_dy     )
+    deallocate(new_dxc    )
+    deallocate(new_rsin_u )
+    deallocate(new_rarea_c)
+    deallocate(new_fC     )
+    deallocate(new_delpc  )
+    deallocate(new_delp   )
+    deallocate(new_ptc    )
+    deallocate(new_pt     )
+    deallocate(new_w      )
+    deallocate(new_ua     )
+    deallocate(new_va     )
+    deallocate(new_wc     )
+    deallocate(new_ut     )
+    deallocate(new_vt     )
+    deallocate(new_v      )
+    deallocate(new_uc     )
+    deallocate(new_u      )
+    deallocate(new_vc     )
+    deallocate(new_divg_d )
+
+  end subroutine interpolate_state
 
 end module sw_core_mod
 

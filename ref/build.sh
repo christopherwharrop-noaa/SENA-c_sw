@@ -151,5 +151,7 @@ make -j4 VERBOSE=1
 export OMP_NUM_THREADS=4
 export OMP_PLACES=cores
 export OMP_PROC_BIND=close
+ulimit -s 12000000 
+
 
 ctest

@@ -32,17 +32,22 @@ program sw_driver
   character(len=64) :: input_data_dir, input_file
   character(len=64) :: output_data_dir, output_file
   character(len=64) :: log_dir, log_file
-  integer           :: nl_unit
+  integer           :: nl_unit, interpFactor
 
   ! Input namelists
   namelist /io/       input_data_dir, input_file,   &
                       output_data_dir, output_file, &
-                      log_dir, log_file
+                      log_dir, log_file, interpFactor
   namelist /debug/    do_profile                ! Defined in sw_core_mod
 
 #ifdef ENABLE_MPI
   call mpi_init(ierr)
 #endif
+
+  ! Set defaults.  Null strings should cause a quick error.
+  input_file = ""
+  output_file = ""
+  interpFactor = 0
 
   ! Get the number of arguments
   narg = command_argument_count()
@@ -60,6 +65,7 @@ program sw_driver
   call get_command_argument(1, namelist_file)
 
   ! Open the namelist file
+  print *,"namelist = ",namelist_file
   open(newunit=nl_unit, file=TRIM(namelist_file), form='formatted', status='old')
 
   ! Read the data IO settings from the namelist
@@ -90,6 +96,9 @@ program sw_driver
   open (newunit=log_file_unit, file=TRIM(log_dir) // "/" // TRIM(log_file), form='formatted', status='replace')
 
   ! Read the input state from the NetCDF input file
+  print *,"input data dir=",input_data_dir
+  print *,"input file =",input_file
+  print *,"netcdf=",TRIM(input_data_dir) // '/' // TRIM(input_file)
   call read_state(TRIM(input_data_dir) // '/' // TRIM(input_file))
 
   ! Write out configuration settings to statistics log file
@@ -97,7 +106,20 @@ program sw_driver
   write(log_file_unit, '(A,I0)') 'nthreads = ', nthreads
 
   ! Write the input state statistics to the log file
-  call write_state_stats("Input State", log_file_unit)
+  call write_state_stats("Input State - Original", log_file_unit)
+
+  ! Interpolate the data according to the interpolation factor.
+  if (interpFactor > 0) then
+    call interpolate_state(interpFactor)
+    ! Write the input state statistics to the log file.e
+    call write_state_stats("Input State - Interpolated", log_file_unit)
+  elseif (interpFactor == 0) then
+    ! Do nothing.
+  else
+    print *,"Error, InterpFactor less than zero."
+    stop 1
+  endif
+
 
   ! Get the start time
   call system_clock(count_start, count_rate)
@@ -133,11 +155,14 @@ program sw_driver
 
   ! Write the output state statistics to the log file
   call write_state_stats("Output State", log_file_unit)
+  print *,"write stats"
 
   ! Write the output state to the NetCDF output file
+  print *,"rank =",rank
   if(rank == 0) then
-    call write_state(TRIM(output_data_dir) // "/" // TRIM(output_file))
+    call write_state(TRIM(output_data_dir) // "/" // TRIM(output_file), interpFactor)
   endif
+  print *,"write state"
 
   ! Write timing information
   write(log_file_unit, *)
@@ -145,6 +170,7 @@ program sw_driver
 
   ! Deallocate the state variables
   call deallocate_state()
+  print *,"write deallocate_state"
 
   ! Turn off GPTL if enabled
 #ifdef ENABLE_GPTL

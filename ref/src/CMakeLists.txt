@@ -4,6 +4,7 @@ print_affinity.c
 runnable.c
 sw_core.F90
 sw_driver.F90
+interpolate.f90
 )
 
 add_executable( ${PROJECT_NAME} ${c_sw_src_files} )
