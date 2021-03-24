@@ -51,6 +51,13 @@ endforeach(FILENAME)
 
 set(COMPARE_SH ${CMAKE_BINARY_DIR}/bin/c_sw_compare.sh)
 
+# Add unit tests here.
+list (APPEND test_src_files
+${PROJECT_SOURCE_DIR}/test/src/interpolateTest.f90
+)
+add_executable (interpolateTest ${test_src_files}  ${PROJECT_SOURCE_DIR}/src/interpolate.f90)
+
+
 # Tests when MPI is enabled
 if ( ENABLE_MPI )
 
@@ -152,5 +159,8 @@ else()
            COMMAND bash -c "../src/c_sw test_input/c_sw_48x48.nl")
   add_test(NAME compare_48x48
            COMMAND ${COMPARE_SH} test_output/c_sw_48x48.log test_output/c_sw_48x48.test)
+
+add_test(NAME InterpolateTest 
+         COMMAND bash -c "set -o pipefail; ../test/interpolateTest 2>&1 | tee test_output/interpolateTest.out")
 
 endif()
