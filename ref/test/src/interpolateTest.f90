@@ -33,11 +33,11 @@ program interpolateTest
       if (allocated(origArray2D)) then
         deallocate (origArray2D)
       endif
-      allocate (origArray2D(ii, ii + i))
+      allocate (origArray2D(ii, ii + 1))
       odims(1) = 1
       odims(2) = ii
       odims(3) = 1
-      odims(4) = ii + i ! non-sqare matrix
+      odims(4) = ii + 1 ! non-sqare matrix
   
       ! Populate the originalArray with 1.0
       origArray2D = 1.0
@@ -49,9 +49,6 @@ program interpolateTest
       endif
       allocate (interpArray2D(idims(1):idims(2), idims(3):idims(4)))
       interpArray2D = 2.0 ! populate the interpArray with 2.0 (2.0 != 1.0)
-      print *,"interpFactor=",interpFactor
-      print *,"odims=",odims
-      print *,"idims=",idims
   
       ! Interpolate the interpolateArray.
       call interpolateArray2D(origArray2D, odims, interpArray2D, idims, interpFactor)
@@ -83,11 +80,11 @@ program interpolateTest
         if (allocated(origArray3D)) then
           deallocate (origArray3D)
         endif
-        allocate (origArray3D(ii, ii + i, kk))
+        allocate (origArray3D(ii, ii + 1, kk))
         odims(1) = 1
         odims(2) = ii
         odims(3) = 1
-        odims(4) = ii + i ! non-sqare matrix
+        odims(4) = ii + 1 ! non-sqare matrix
         odims(5) = 1
         odims(6) = kk
 

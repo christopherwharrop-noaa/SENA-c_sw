@@ -137,7 +137,6 @@ contains
     call d2a2c_vect(sw_corner, se_corner, ne_corner, nw_corner,            &
                     sin_sg, cosa_u, cosa_v, cosa_s, rsin_u, rsin_v, rsin2, &
                     dxa, dya, u, v, ua, va, uc, vc, ut, vt)
-    print *,OMP_GET_THREAD_NUM(),"end d2a2c_vect"
 
     if ( nord > 0 ) then
       call divergence_corner(sw_corner, se_corner, ne_corner, nw_corner, &
@@ -1876,10 +1875,6 @@ contains
     odims(4) = jed
     call interpolateCalculateSpace2D(odims, interpFactor, idims)
     allocate (new_rsin2(idims(1):idims(2), idims(3):idims(4)))
-    print *,"odims=",odims
-    print *,"idims=",idims
-    print *,"rsin2=",shape(rsin2)
-    print *,"new_rsin2=",shape(new_rsin2)
     call interpolateArray2D(rsin2, odims, new_rsin2, idims, interpFactor)
     allocate (new_dxa(idims(1):idims(2), idims(3):idims(4)))
     call interpolateArray2D(dxa, odims, new_dxa, idims, interpFactor)
