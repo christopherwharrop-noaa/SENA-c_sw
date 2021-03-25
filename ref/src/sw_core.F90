@@ -1904,7 +1904,17 @@ contains
     endif
 
     !Pack the halo into send_buffer
+#ifdef ENABLE_GPTL
+    if (do_profile == 1) then
+      ret = gptlstart('pack')
+    end if
+#endif
     call pack
+#ifdef ENABLE_GPTL
+    if (do_profile == 1) then
+      ret = gptlstop ('pack')
+    end if
+#endif
 
     !Calculate recv_halo_size (See subroutine get_neighbors)
     recv_halo_size(1) = send_halo_size(5)
@@ -1945,7 +1955,17 @@ contains
       print*,'Error in exchange: MPI_WAITALL returned bad status=',status,request_count
       stop
     endif
+#ifdef ENABLE_GPTL
+    if (do_profile == 1) then
+      ret = gptlstart('unpack')
+    end if
+#endif
     call unpack
+#ifdef ENABLE_GPTL
+    if (do_profile == 1) then
+      ret = gptlstop ('unpack')
+    end if
+#endif
 
   end subroutine exchange
 

@@ -41,7 +41,6 @@ program sw_driver
                            log_dir, log_file
   namelist /debug/         do_profile                     ! Defined in sw_core_mod
   namelist /decomposition/ rows,cols                      ! Defined in sw_core_mod
-
 #ifdef ENABLE_MPI
   call mpi_init(ierr)
   if(ierr /= 0) then
@@ -209,7 +208,9 @@ program sw_driver
   ! Turn off GPTL if enabled
 #ifdef ENABLE_GPTL
   if (do_profile == 1) then
-    ret = gptlpr(0)
+    !Uncommemt the next line to generate timing information for each rank
+    !ret = gptlpr (rank)
+    ret = gptlpr_summary (MPI_COMM_WORLD)
     ret = gptlfinalize()
   end if
 #endif
