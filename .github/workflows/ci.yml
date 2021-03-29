@@ -212,6 +212,6 @@ jobs:
           cd build
           export CC=gcc
           export FC=gfortran
-          cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 ..
+          cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 -DMPIEXEC_PREFLAGS=--oversubscribe ..
           make
           ctest --output-on-failure
