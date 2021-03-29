@@ -206,6 +206,7 @@ jobs:
       # Test MPI support
       - name: Build c_sw with MPI support
         run: |
+          ulimit -a
           cd ref
           rm -rf build
           mkdir build
