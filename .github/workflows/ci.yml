@@ -208,7 +208,7 @@ jobs:
         run: |
           echo "ulimit -s unlimited" > ~/.bashrc
           cat ~/.bashrc
-	  ulimit -s unlimited
+          ulimit -s unlimited
           ulimit -a
           cd ref
           rm -rf build
