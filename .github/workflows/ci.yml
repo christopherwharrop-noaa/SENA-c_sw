@@ -206,8 +206,9 @@ jobs:
       # Test MPI support
       - name: Build c_sw with MPI support
         run: |
-          echo "ulimit -s unlimited" >> ~/.bashrc
+          echo "ulimit -s unlimited" > ~/.bashrc
           cat ~/.bashrc
+	  ulimit -s unlimited
           ulimit -a
           cd ref
           rm -rf build
