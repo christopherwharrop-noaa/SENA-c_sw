@@ -53,9 +53,27 @@ set(COMPARE_SH ${CMAKE_BINARY_DIR}/bin/c_sw_compare.sh)
 
 # Add unit tests here.
 list (APPEND test_src_files
-${PROJECT_SOURCE_DIR}/test/src/interpolateTest.f90
+  ${PROJECT_SOURCE_DIR}/src/interpolate.f90
+  ${PROJECT_SOURCE_DIR}/test/src/interpolateTest.f90
 )
-add_executable (interpolateTest ${test_src_files}  ${PROJECT_SOURCE_DIR}/src/interpolate.f90)
+add_executable (interpolateTest ${test_src_files} )
+
+target_include_directories( interpolateTest SYSTEM PUBLIC ${NetCDF_INCLUDE_DIRS} )
+
+target_link_libraries( interpolateTest PUBLIC NetCDF::NetCDF_Fortran)
+if(OpenMP_FOUND)
+    target_link_libraries( interpolateTest PUBLIC OpenMP::OpenMP_Fortran)
+    target_link_libraries( interpolateTest PUBLIC OpenMP::OpenMP_C)
+endif()
+
+if ( GPTL_FOUND )
+   target_link_libraries( interpolateTest PUBLIC GPTL::GPTL )
+endif()
+
+if ( MPI_FOUND )
+  target_link_libraries( interpolateTest PUBLIC MPI::MPI_Fortran )
+  target_link_libraries( interpolateTest PUBLIC MPI::MPI_C )
+endif()
 
 
 # Tests when MPI is enabled
