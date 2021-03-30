@@ -1,7 +1,7 @@
 ####################################################################
 # COMMON FLAGS
 ####################################################################
-set( CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fbacktrace -fdefault-real-8 -fdefault-double-8")
+set( CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fbacktrace -fdefault-real-8 -fdefault-double-8 -ffp-contract=off ")
 
 ####################################################################
 # RELEASE FLAGS

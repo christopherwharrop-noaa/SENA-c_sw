@@ -206,12 +206,16 @@ jobs:
       # Test MPI support
       - name: Build c_sw with MPI support
         run: |
+          echo "ulimit -s unlimited" > ~/.bashrc
+          cat ~/.bashrc
+          ulimit -s unlimited
+          ulimit -a
           cd ref
           rm -rf build
           mkdir build
           cd build
           export CC=gcc
           export FC=gfortran
-          cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 ..
+          cmake -DCMAKE_BUILD_TYPE=debug -DENABLE_MPI=1 -DMPIEXEC_PREFLAGS=--oversubscribe ..
           make
           ctest --output-on-failure
