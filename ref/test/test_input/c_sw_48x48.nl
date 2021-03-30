@@ -5,7 +5,7 @@
   output_file='c_sw_48x48.nc'
   log_dir='test_output'
   log_file='c_sw_48x48.log'
-  interpFactor = 5
+  interpFactor = 4
 /
 
 &debug
